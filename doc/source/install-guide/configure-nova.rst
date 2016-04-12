@@ -7,6 +7,20 @@ The compute service (nova) handles the creation of virtual machines within an
 OpenStack environment. Many of the default options used by OpenStack-Ansible
 are found within `defaults/main.yml` within the nova role.
 
+Availability zones
+~~~~~~~~~~~~~~~~~~
+
+Deployers with multiple availability zones (AZ's) can set the
+``nova_default_schedule_zone`` Ansible variable to specify an AZ to use for
+instance build requests where an AZ is not provided. This could be useful in
+environments with different types of hypervisors where builds are sent to
+certain hardware types based on their resource requirements.
+
+For example, if a deployer has some servers with spinning hard disks and others
+with SSDs, they can set the default AZ to one that uses only spinning disks (to
+save costs). To build an instance using SSDs, users must select an AZ that
+includes SSDs and provide that AZ in their instance build request.
+
 Block device tuning for Ceph (RBD)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -70,7 +84,7 @@ the ``nova_nova_conf_overrides`` variable:
         force_config_drive: True
 
 Libvirtd Connectivity and Authentication
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, OpenStack-Ansible configures the libvirt daemon in the following
 way:
@@ -104,6 +118,28 @@ multipath support in nova through a configuration override:
     nova_nova_conf_overrides:
       libvirt:
           iscsi_use_multipath: true
+
+Shared storage and synchronized UID/GID
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Deployers can specify a custom UID for the nova user and GID for the nova group
+to ensure they are identical on each host. This is helpful when using shared
+storage on compute nodes because it allows instances to migrate without
+filesystem ownership failures.
+
+By default, Ansible will create the nova user and group without specifying the
+UID or GID. To specify custom values for the UID/GID, set the following
+Ansible variables:
+
+.. code-block:: yaml
+
+    nova_system_user_uid = <specify a UID>
+    nova_system_group_gid = <specify a GID>
+
+**WARNING:** Setting this value **after** deploying an environment with
+OpenStack-Ansible can cause failures, errors, and general instability. These
+values should only be set once **before** deploying an OpenStack environment
+and then never changed.
 
 --------------
 

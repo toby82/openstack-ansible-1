@@ -14,4 +14,7 @@ Contents:
    playbooks
    extending
    contribute
+   core-reviewers
+   additional-roles
+   inventory
 

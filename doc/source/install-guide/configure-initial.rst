@@ -27,6 +27,9 @@ memcache, and RabbitMQ.  There are several other host types that contain
 other types of containers and all of these are listed in
 ``openstack_user_config.yml``.
 
+For details about how the inventory is generated from the environment
+configuration, please see :ref:`developer-inventory`.
+
 Affinity
 ^^^^^^^^
 
@@ -82,22 +85,22 @@ container on each host, but there would be no RabbitMQ containers deployed.
 Security Hardening
 ^^^^^^^^^^^^^^^^^^
 
-Deployers have the option to automatically apply security hardening to an
-OpenStack Ansible deployment using the `openstack-ansible-security`_ role. The
-role uses a version of the `Security Technical Implementation Guide (STIG)`_
-that has been adapted for Ubuntu 14.04 and OpenStack.
+OpenStack-Ansible automatically applies host security hardening configurations
+using the `openstack-ansible-security`_ role. The role uses a version of the
+`Security Technical Implementation Guide (STIG)`_ that has been adapted for
+Ubuntu 14.04 and OpenStack.
 
 The role is applicable to physical hosts within an OpenStack-Ansible deployment
 that are operating as any type of node -- infrastructure or compute. By
-default, the role is disabled. Deployers can enable it by changing a variable
+default, the role is enabled. Deployers can disable it by changing a variable
 within ``user_variables.yml``:
 
 .. code-block:: yaml
 
-    apply_security_hardening: true
+    apply_security_hardening: false
 
-When the variable is set, the role will be applied by
-``scripts/run_playbooks.sh`` automatically during deployments.
+When the variable is set to ``true``, the ``setup-hosts.yml`` playbook applies
+the role during deployments.
 
 Deployers can apply security configurations to an existing environment or audit
 an environment using a playbook supplied with OpenStack-Ansible:

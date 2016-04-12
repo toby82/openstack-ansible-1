@@ -102,15 +102,6 @@
   tags:
     - deploy-openstack-user-config
 
-- name: Deploy openstack_environment
-  config_template:
-    src: "../etc/openstack_deploy/openstack_environment.yml"
-    dest: "/etc/openstack_deploy/openstack_environment.yml"
-    config_overrides: "{{ openstack_environment_overrides | default({}) }}"
-    config_type: "yaml"
-  tags:
-    - deploy-openstack-environment
-
 - name: Deploy user_secrets file
   config_template:
     src: "../etc/openstack_deploy/user_secrets.yml"
@@ -147,3 +138,57 @@
     dest: /etc/openstack_deploy/user_variables.yml
     config_overrides: "{{ user_variables_overrides | default({}) }}"
     config_type: yaml
+
+- name: Determine if the host has a global pip config file
+  stat:
+    path: /etc/pip.conf
+  register: pip_conf_file
+
+- name: Add user_conf_files to contain the list of files to copy into containers
+  file:
+    path: /etc/openstack_deploy/user_conf_files.yml
+    state: touch
+  when:
+    - apt_conf_files is defined or pip_conf_file.stat.exists
+  tags:
+    - container-conf-files
+
+- name: Ensure that the first line in user_conf_files is correct
+  lineinfile:
+    dest: /etc/openstack_deploy/user_conf_files.yml
+    line: "---"
+    insertbefore: BOF
+  when:
+    - apt_conf_files is defined or pip_conf_file.stat.exists
+  tags:
+    - container-conf-files
+
+- name: Ensure that the second line in user_conf_files is correct
+  lineinfile:
+    dest: /etc/openstack_deploy/user_conf_files.yml
+    line: "lxc_container_cache_files:"
+    insertafter: "^---"
+  when:
+    - apt_conf_files is defined or pip_conf_file.stat.exists
+  tags:
+    - container-conf-files
+
+- name: Add the dict to copy the global pip config file into user_conf_files
+  lineinfile:
+    dest: /etc/openstack_deploy/user_conf_files.yml
+    line: " - { src: '/etc/pip.conf', dest: '/etc/pip.conf' }"
+  when:
+    - pip_conf_file.stat.exists
+  tags:
+    - container-conf-files
+
+- name: Add the list of dicts for the apt config files into user_conf_files
+  lineinfile:
+    dest: /etc/openstack_deploy/user_conf_files.yml
+    line: " - { src: '/etc/apt/apt.conf.d/{{ item }}', dest: '/etc/apt/apt.conf.d/{{ item }}' }"
+  with_items: apt_conf_files.stdout_lines
+  when:
+    - apt_conf_files is defined
+    - apt_conf_files.stdout_lines | length > 0
+  tags:
+    - container-conf-files

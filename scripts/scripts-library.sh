@@ -21,7 +21,7 @@ MAX_RETRIES=${MAX_RETRIES:-5}
 REPORT_DATA=${REPORT_DATA:-""}
 ANSIBLE_PARAMETERS=${ANSIBLE_PARAMETERS:-""}
 STARTTIME="${STARTTIME:-$(date +%s)}"
-PIP_MAJOR_VERSION=${PIP_MAJOR_VERSION:-"7"}
+PIP_INSTALL_OPTIONS=${PIP_INSTALL_OPTIONS:-'pip==8.1.1 setuptools==20.6.7 wheel==0.29.0 '}
 
 # The default SSHD configuration has MaxSessions = 10. If a deployer changes
 #  their SSHD config, then the FORKS may be set to a higher number. We set the
@@ -44,11 +44,9 @@ function successerator {
   set +e
   # Get the time that the method was started.
   OP_START_TIME=$(date +%s)
-  RETRY=0
   # Set the initial return value to failure.
   false
-  while [ $? -ne 0 -a ${RETRY} -lt ${MAX_RETRIES} ];do
-    ((RETRY++))
+  for ((RETRY=0; $? != 0 && RETRY < MAX_RETRIES; RETRY++)); do
     if [ ${RETRY} -gt 1 ];then
       $@ -vvvv
     else
@@ -111,6 +109,7 @@ function exit_state {
 
 function exit_success {
   set +x
+  [[ "${OSA_GATE_JOB:-false}" = true ]] && gate_job_exit_tasks
   exit_state 0
 }
 
@@ -119,7 +118,12 @@ function exit_fail {
   log_instance_info
   cat ${INFO_FILENAME}
   info_block "Error Info - $@"
+  [[ "${OSA_GATE_JOB:-false}" = true ]] && gate_job_exit_tasks
   exit_state 1
+}
+
+function gate_job_exit_tasks {
+  [[ -d "/openstack/log" ]] && chmod -R 0777 /openstack/log
 }
 
 function print_info {
@@ -216,10 +220,10 @@ function get_pip {
   # check if pip is already installed
   if [ "$(which pip)" ]; then
 
-    # if the version installed is the wrong version, fix it
-    if [ "$(pip --version | awk '{print $2}' | cut -d. -f1)" != ${PIP_MAJOR_VERSION} ]; then
-      pip install -I "pip>=${PIP_MAJOR_VERSION},<$((PIP_MAJOR_VERSION+1))"
-    fi
+    # make sure that the right pip base packages are installed
+    # If this fails retry with --isolated to bypass the repo server because the repo server will not have
+    # been updated at this point to include any newer pip packages.
+    pip install --upgrade ${PIP_INSTALL_OPTIONS} || pip install --upgrade --isolated ${PIP_INSTALL_OPTIONS}
 
   # when pip is not installed, install it
   else
@@ -228,7 +232,7 @@ function get_pip {
     if [ -n "${GET_PIP_URL:-}" ]; then
       curl --silent ${GET_PIP_URL} > /opt/get-pip.py
       if head -n 1 /opt/get-pip.py | grep python; then
-        python /opt/get-pip.py "pip>=${PIP_MAJOR_VERSION},<$((PIP_MAJOR_VERSION+1))"
+        python /opt/get-pip.py ${PIP_INSTALL_OPTIONS}
         return
       fi
     fi
@@ -236,14 +240,14 @@ function get_pip {
     # Try getting pip from bootstrap.pypa.io as a primary source
     curl --silent https://bootstrap.pypa.io/get-pip.py > /opt/get-pip.py
     if head -n 1 /opt/get-pip.py | grep python; then
-      python /opt/get-pip.py "pip>=${PIP_MAJOR_VERSION},<$((PIP_MAJOR_VERSION+1))"
+      python /opt/get-pip.py ${PIP_INSTALL_OPTIONS}
       return
     fi
 
     # Try the get-pip.py from the github repository as a primary source
     curl --silent https://raw.githubusercontent.com/pypa/get-pip/master/get-pip.py > /opt/get-pip.py
     if head -n 1 /opt/get-pip.py | grep python; then
-      python /opt/get-pip.py "pip>=${PIP_MAJOR_VERSION},<$((PIP_MAJOR_VERSION+1))"
+      python /opt/get-pip.py ${PIP_INSTALL_OPTIONS}
       return
     fi
 
@@ -251,7 +255,6 @@ function get_pip {
     exit_fail
   fi
 }
-
 
 ## Signal traps --------------------------------------------------------------
 # Trap all Death Signals and Errors

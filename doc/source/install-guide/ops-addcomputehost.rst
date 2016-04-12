@@ -14,13 +14,19 @@ cluster.
 
    If necessary, also modify the ``used_ips`` stanza.
 
+#. If the cluster is utilizing Ceilometer, it will be necessary to edit the
+   ``/etc/openstack_deploy/conf.d/ceilometer.yml`` file and add the host to
+   the ``metering-compute_hosts`` stanza.
+
 #. Run the following commands to add the host. Replace
    ``NEW_HOST_NAME`` with the name of the new host.
 
    .. code-block:: shell-session
 
        # cd /opt/openstack-ansible/playbooks
-       # openstack-ansible setup-everything.yml --limit NEW_HOST_NAME
+       # openstack-ansible setup-hosts.yml --limit NEW_HOST_NAME
+       # openstack-ansible setup-openstack.yml --skip-tags nova-key-distribute --limit NEW_HOST_NAME
+       # openstack-ansible setup-openstack.yml --tags nova-key --limit compute_hosts
 
 --------------
 

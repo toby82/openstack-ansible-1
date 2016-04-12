@@ -57,8 +57,8 @@ def args():
         epilog='Inventory Generator Licensed "Apache 2.0"')
 
     parser.add_argument(
-        '--file',
-        help='User defined configuration file',
+        '--config',
+        help='Path containing the user defined configuration files',
         required=False,
         default=None
     )
@@ -354,12 +354,11 @@ def _add_container_hosts(assignment, config, container_name, container_type,
         )
 
 
-def user_defined_setup(config, inventory, is_metal):
+def user_defined_setup(config, inventory):
     """Apply user defined entries from config into inventory.
 
     :param config: ``dict``  User defined information
     :param inventory: ``dict``  Living dictionary of inventory
-    :param is_metal: ``bol``  If true, a container entry will not be built
     """
     hvs = inventory['_meta']['hostvars']
     for key, value in config.iteritems():
@@ -377,7 +376,7 @@ def user_defined_setup(config, inventory, is_metal):
                 hvs[_key].update({
                     'ansible_ssh_host': _value['ip'],
                     'container_address': _value['ip'],
-                    'is_metal': is_metal,
+                    'is_metal': True,
                     'physical_host_group': key
                 })
 
@@ -386,7 +385,7 @@ def user_defined_setup(config, inventory, is_metal):
                 if not properties or not isinstance(properties, dict):
                     hvs[_key]['properties'] = dict()
 
-                hvs[_key]['properties'].update({'is_metal': is_metal})
+                hvs[_key]['properties'].update({'is_metal': True})
 
                 if 'host_vars' in _value:
                     for _k, _v in _value['host_vars'].items():
@@ -396,13 +395,13 @@ def user_defined_setup(config, inventory, is_metal):
                 append_if(array=inventory[key]['hosts'], item=_key)
 
 
-def skel_setup(environment_file, inventory):
+def skel_setup(environment, inventory):
     """Build out the main inventory skeleton as needed.
 
-    :param environment_file: ``dict`` Known environment information
+    :param environment: ``dict`` Known environment information
     :param inventory: ``dict``  Living dictionary of inventory
     """
-    for key, value in environment_file.iteritems():
+    for key, value in environment.iteritems():
         if key == 'version':
             continue
         for _key, _value in value.iteritems():
@@ -707,32 +706,28 @@ def container_skel_load(container_skel, inventory, config):
                 )
 
 
-def file_find(pass_exception=False, user_file=None):
-    """Return the path to a file.
+def find_config_path(user_config_path=None):
+    """Return the path to the user configuration files.
 
-    If no file is found the system will exit.
-    The file lookup will be done in the following directories:
+    If no directory is found the system will exit.
+    The lookup will be done in the following directories:
+      $(user_config_path)/
       /etc/openstack_deploy/
-      $(pwd)/openstack_deploy/
 
-    :param pass_exception: ``bol``
-    :param user_file: ``str`` Additional location to look in FIRST for a file
+    :param user_config_path: ``str`` Location to look in FIRST for a file
     """
-    file_check = [
+    path_check = [
         os.path.join('/etc', 'openstack_deploy'),
     ]
 
-    if user_file is not None:
-        file_check.insert(0, os.path.expanduser(user_file))
+    if user_config_path is not None:
+        path_check.insert(0, os.path.expanduser(user_config_path))
 
-    for f in file_check:
+    for f in path_check:
         if os.path.isdir(f):
             return f
     else:
-        if pass_exception is False:
-            raise SystemExit('No file found at: %s' % file_check)
-        else:
-            return False
+        raise SystemExit('No config found at: %s' % path_check)
 
 
 def _set_used_ips(user_defined_config, inventory):
@@ -860,24 +855,64 @@ def _extra_config(user_defined_config, base_dir):
                     )
 
 
-def main():
-    """Run the main application."""
-    all_args = args()
+def _check_config_settings(cidr_networks, config, container_skel):
+    """check preciseness of config settings
+
+    :param cidr_networks: ``dict`` cidr_networks from config
+    :param config: ``dict``  User defined information
+    :param container_skel: ``dict`` container skeleton for all known containers
+    """
+
+    # search for any container that dosen't have is_metal flag set to true
+    is_provider_networks_needed = False
+    for key, value in container_skel.iteritems():
+        properties = value.get('properties')
+        is_metal = properties.get('is_metal', False)
+        if not is_metal:
+            is_provider_networks_needed = True
+            break
+
+    if is_provider_networks_needed:
+        if ('global_overrides' not in config):
+            raise SystemExit(
+                "global_overrides can't be found in user config"
+            )
+
+        elif ('provider_networks' not in config['global_overrides']):
+            raise SystemExit(
+                "provider networks can't be found under "
+                "global_overrides in user config"
+            )
+        else:
+            # make sure that provider networks's ip_from_q is valid
+            overrides = config['global_overrides']
+            pns = overrides.get('provider_networks', list())
+            for pn in pns:
+                p_net = pn.get('network')
+                if not p_net:
+                    continue
+                q_name = p_net.get('ip_from_q')
+                if q_name and q_name not in cidr_networks:
+                    raise SystemExit(
+                        "can't find " + q_name + " in cidr_networks"
+                    )
+
+
+def load_user_configuration(config_path):
+    """Create a user configuration dictionary from config files
+
+    :param config_path: ``str`` path where the configuration files are kept
+    """
     user_defined_config = dict()
 
-    # Get the local path
-    local_path = file_find(
-        user_file=all_args.get('file')
-    )
-
     # Load the user defined configuration file
-    user_config_file = os.path.join(local_path, 'openstack_user_config.yml')
+    user_config_file = os.path.join(config_path, 'openstack_user_config.yml')
     if os.path.isfile(user_config_file):
         with open(user_config_file, 'rb') as f:
             user_defined_config.update(yaml.safe_load(f.read()) or {})
 
     # Load anything in a conf.d directory if found
-    base_dir = os.path.join(local_path, 'conf.d')
+    base_dir = os.path.join(config_path, 'conf.d')
     if os.path.isdir(base_dir):
         _extra_config(user_defined_config, base_dir)
 
@@ -885,25 +920,33 @@ def main():
     if not user_defined_config:
         raise SystemExit(
             'No user config loaded\n'
-            'No openstack_user_config files are available in either the base'
-            ' location or the conf.d directory'
+            'No openstack_user_config files are available in either \n%s'
+            '\nor \n%s/conf.d directory' % (config_path, config_path)
         )
+    return user_defined_config
 
-    # Get the contents of the system environment json
-    environment_file = os.path.join(local_path, 'openstack_environment.yml')
 
-    # Load existing openstack environment json
-    with open(environment_file, 'rb') as f:
-        environment = yaml.safe_load(f.read())
+def main():
+    """Run the main application."""
+    all_args = args()
+    # Get the path to the user configuration files
+    config_path = find_config_path(
+        user_config_path=all_args.get('config')
+    )
 
-    # Load anything in an env.d directory if found
-    env_plugins = os.path.join(local_path, 'env.d')
+    user_defined_config = load_user_configuration(config_path)
+
+    environment = dict()
+
+    # Load all YAML files found in the env.d directory
+    env_plugins = os.path.join(config_path, 'env.d')
+
     if os.path.isdir(env_plugins):
         _extra_config(user_defined_config=environment, base_dir=env_plugins)
 
     # Load existing inventory file if found
     dynamic_inventory_file = os.path.join(
-        local_path, 'openstack_inventory.json'
+        config_path, 'openstack_inventory.json'
     )
     if os.path.isfile(dynamic_inventory_file):
         with open(dynamic_inventory_file, 'rb') as f:
@@ -911,7 +954,7 @@ def main():
 
         # Create a backup of all previous inventory files as a tar archive
         inventory_backup_file = os.path.join(
-            local_path,
+            config_path,
             'backup_openstack_inventory.tar'
         )
         with tarfile.open(inventory_backup_file, 'a') as tar:
@@ -934,14 +977,22 @@ def main():
     elif 'management' in cidr_networks:
         user_cidr = cidr_networks['management']
     else:
-        raise SystemExit('No container or management network specified')
+        raise SystemExit('No container or management network '
+                         'specified in user config.')
+
+    # make sure user_defined config is self contained
+    _check_config_settings(
+        cidr_networks,
+        user_defined_config,
+        environment.get('container_skel')
+    )
 
     # Add the container_cidr into the all global ansible group_vars
     _parse_global_variables(user_cidr, dynamic_inventory, user_defined_config)
 
     # Load all of the IP addresses that we know are used and set the queue
     _set_used_ips(user_defined_config, dynamic_inventory)
-    user_defined_setup(user_defined_config, dynamic_inventory, is_metal=True)
+    user_defined_setup(user_defined_config, dynamic_inventory)
     skel_setup(environment, dynamic_inventory)
     skel_load(
         environment.get('physical_skel'),
@@ -979,7 +1030,8 @@ def main():
                 host_hash[_key] = _value
 
     # Save a list of all hosts and their given IP addresses
-    hostnames_ip_file = os.path.join(local_path, 'openstack_hostnames_ips.yml')
+    hostnames_ip_file = os.path.join(
+        config_path, 'openstack_hostnames_ips.yml')
     with open(hostnames_ip_file, 'wb') as f:
         f.write(
             json.dumps(

@@ -90,8 +90,8 @@
 #
 # used_ips:
 #   - 172.29.236.1
-#   - 172.29.236.11,172.29.236.12
-#   - 172.29.239.231,172.29.239.254
+#   - "172.29.236.11,172.29.236.12"
+#   - "172.29.239.231,172.29.239.254"
 #
 # --------
 #
@@ -165,7 +165,7 @@
 #
 #       Option: group_binds (required, string)
 #       List of one or more Ansible groups that contain this
-#       network. For more information, see the openstack_environment.yml file.
+#       network. For more information, see the env.d YAML files.
 #
 #       Option: net_name (optional, string)
 #       Name of network for 'flat' or 'vlan' types. Only valid for these
@@ -575,6 +575,7 @@
 #           volume_backend_name: LVM_iSCSI
 #           volume_driver: cinder.volume.drivers.lvm.LVMVolumeDriver
 #           volume_group: cinder-volumes
+#           iscsi_ip_address: "{{ storage_address }}"
 #         limit_container_types: cinder_volume
 #
 # Example:
@@ -614,7 +615,6 @@
 #           rbd_max_clone_depth: 5
 #           rbd_store_chunk_size: 4
 #           rados_connect_timeout: -1
-#           glance_api_version: 2
 #           volume_backend_name: volumes_hdd
 #           rbd_user: "{{ cinder_ceph_client }}"
 #           rbd_secret_uuid: "{{ cinder_ceph_client_uuid }}"
